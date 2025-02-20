@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Try-On</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background: linear-gradient(to right, #ff758c, #ff7eb3);
+            color: white;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            color: black;
+            padding: 20px;
+            border-radius: 10px;
+            width: 60%;
+            margin: auto;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        #preview { display: none; width: 200px; border-radius: 10px; margin-top: 10px; }
+        #video { width: 200px; border-radius: 10px; }
+        button, select, input[type='file'] {
+            padding: 10px;
+            margin: 10px;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button { background-color: #007BFF; color: white; }
+        button:hover { background-color: #0056b3; }
+        select, input[type='file'] { background: #f8f8f8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Virtual Try-On</h1>
+        
+        <h3>1. Capture or Upload Your Face</h3>
+        <video id="video" autoplay></video>
+        <canvas id="canvas" style="display: none;"></canvas>
+        <button onclick="captureFace()">Capture Face</button>
+        <br>
+        <input type="file" id="uploadFace" accept="image/*" onchange="uploadFaceImage()">
+        <br>
+        <img id="preview" src="" alt="Captured Face">
+        
+        <h3>2. Select Body Shape & Size</h3>
+        <select id="body_shape">
+            <option value="Slim">Slim</option>
+            <option value="Athletic">Athletic</option>
+            <option value="Curvy">Curvy</option>
+            <option value="Plus Size">Plus Size</option>
+        </select>
+        <select id="size">
+            <option value="S">Small (S)</option>
+            <option value="M">Medium (M)</option>
+            <option value="L">Large (L)</option>
+            <option value="XL">Extra Large (XL)</option>
+            <option value="XXL">Double Extra Large (XXL)</option>
+        </select>
+        
+        <h3>3. Select a T-Shirt</h3>
+        <select id="tshirt">
+            <option value="monocolor-midnight-madness-marathon-t-shirt-design_742173-5733.avif">T-Shirt 1</option>
+            <option value="mockup white t-shirt-Front.jpg">T-Shirt 2</option>
+        </select>
+        
+        <button onclick="applyClothing()">Try On</button>
+    </div>
+
+    <script>
+        let capturedImagePath = "";
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
+        const preview = document.getElementById("preview");
+
+        // Start video stream
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(err => {
+                console.error("Error accessing webcam:", err);
+                alert("Could not access webcam. Please upload an image instead.");
+            });
+
+        function captureFace() {
+            const context = canvas.getContext("2d");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            canvas.toBlob(blob => {
+                const formData = new FormData();
+                formData.append("image", blob, "captured_face.png");
+
+                fetch("/upload-face", {
+                    method: "POST",
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error("Upload error:", data.error);
+                        alert(data.error);
+                    } else {
+                        capturedImagePath = data.image_path;
+                        preview.src = capturedImagePath;
+                        preview.style.display = "block";
+                        console.log("Face captured and uploaded:", capturedImagePath);
+                    }
+                })
+                .catch(err => {
+                    console.error("Fetch error:", err);
+                    alert("Error uploading captured face.");
+                });
+            });
+        }
+
+        function uploadFaceImage() {
+            const fileInput = document.getElementById("uploadFace");
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append("image", file);
+
+            fetch("/upload-face", {
+                method: "POST",
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error("Upload error:", data.error);
+                    alert(data.error);
+                } else {
+                    capturedImagePath = data.image_path;
+                    preview.src = capturedImagePath;
+                    preview.style.display = "block";
+                    console.log("Face uploaded:", capturedImagePath);
+                }
+            })
+            .catch(err => {
+                console.error("Fetch error:", err);
+                alert("Error uploading image.");
+            });
+        }
+
+        function applyClothing() {
+            if (!capturedImagePath) {
+                alert("Please capture or upload a face first!");
+                return;
+            }
+
+            const body_shape = document.getElementById("body_shape").value;
+            const size = document.getElementById("size").value;
+            const tshirt = document.getElementById("tshirt").value;
+            
+            fetch("/apply-clothing", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ image_path: capturedImagePath, body_shape, size, tshirt })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    console.error("Apply clothing error:", data.error);
+                    alert(data.error);
+                } else if (data.output_image) {
+                    console.log("Success! Redirecting to result:", data.output_image);
+                    window.location.href = "/result?output=" + encodeURIComponent(data.output_image);
+                }
+            })
+            .catch(err => {
+                console.error("Fetch error:", err);
+                alert("Error applying clothing.");
+            });
+        }
+    </script>
+</body>
+</html>
